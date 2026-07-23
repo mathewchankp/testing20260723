@@ -115,13 +115,31 @@
 
     // 產出圖片並觸發下載
     try {
-      const image = canvas.toDataURL("image/png");
-      const a = document.createElement('a');
-      a.href = image;
-      a.download = 'photo_' + Date.now() + '.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+     canvas.toBlob(async (blob) => {
+
+  const file = new File(
+    [blob],
+    `photo_${Date.now()}.png`,
+    { type: 'image/png' }
+  );
+
+  try {
+    if (
+      navigator.canShare &&
+      navigator.canShare({ files: [file] })
+    ) {
+      await navigator.share({
+        files: [file],
+        title: 'AR Photo'
+      });
+    } else {
+      window.open(URL.createObjectURL(blob));
+    }
+  } catch (err) {
+    console.log(err);
+  }
+
+}, "image/png");
     } catch (e) {
       alert("儲存圖片失敗，請嘗試長按畫面儲存圖片。");
     }
