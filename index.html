@@ -71,45 +71,63 @@
   <canvas id="canvas" style="display:none;"></canvas>
 
   <script>
-    const video = document.getElementById('webcam');
-    const frame = document.getElementById('frame');
-    const canvas = document.getElementById('canvas');
+  const video = document.getElementById('webcam');
+  const frame = document.getElementById('frame');
+  const canvas = document.getElementById('canvas');
 
-    // 啟動手機相機 (優先使用後置鏡頭 'environment')
-    async function initCamera() {
+  // 升級版相機啟動邏輯 (相容更多手機與瀏覽器)
+  async function initCamera() {
+    // 嘗試順序：1. 後置鏡頭 -> 2. 普通鏡頭
+    const constraintsList = [
+      { video: { facingMode: { ideal: "environment" } }, audio: false },
+      { video: { facingMode: "user" }, audio: false },
+      { video: true, audio: false }
+    ];
+
+    for (let constraints of constraintsList) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: "environment" } },
-          audio: false
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
+        return; // 成功啟動就跳出
       } catch (err) {
-        // 如果抓不到後置鏡頭（例如電腦試用），退回普通相機
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = fallbackStream;
+        console.warn("嘗試啟動相機失敗，切換備用設定:", err);
       }
     }
 
-    // 合成相機畫面與 PNG 並下載
-    function takePhoto() {
-      const context = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    alert("無法讀取相機，請檢查瀏覽器相機權限是否已開啟！");
+  }
 
-      // 1. 畫入相機畫面
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      // 2. 畫入 PNG 透明框
-      context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+  // 拍照與下載功能
+  function takePhoto() {
+    if (!video.videoWidth) {
+      alert("相機影像尚未準備好，請稍等再試！");
+      return;
+    }
 
-      // 下載圖片
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // 1. 畫入相機畫面
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // 2. 畫入 PNG 透明框
+    context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+
+    // 產出圖片並觸發下載
+    try {
       const image = canvas.toDataURL("image/png");
       const a = document.createElement('a');
       a.href = image;
-      a.download = 'photo.png';
+      a.download = 'photo_' + Date.now() + '.png';
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      alert("儲存圖片失敗，請嘗試長按畫面儲存圖片。");
     }
+  }
 
-    window.addEventListener('load', initCamera);
-  </script>
+  window.addEventListener('load', initCamera);
+</script>
 </body>
 </html>
