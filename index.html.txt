@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR 相機框</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    
+    /* 容器：讓相機與相框疊在一起 */
+    .camera-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* 實時相機畫面 */
+    video {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover; /* 鋪滿螢幕 */
+      z-index: 1;
+    }
+
+    /* 你的透明 PNG 外框 */
+    .overlay-frame {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* 確保相框完整顯示不變形 */
+      z-index: 2;
+      pointer-events: none; /* 讓點擊穿透到下面 */
+    }
+
+    /* 拍照按鈕 */
+    .snap-btn {
+      position: absolute;
+      bottom: 30px;
+      z-index: 3;
+      padding: 15px 30px;
+      font-size: 18px;
+      font-weight: bold;
+      background-color: #ffffff;
+      color: #000000;
+      border: none;
+      border-radius: 50px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="camera-container">
+    <!-- 相機影像 -->
+    <video id="webcam" autoplay playsinline muted></video>
+    
+    <!-- 你的預設透明 PNG 圖案 (請換成你的 PNG 網址或相對路徑) -->
+    <img id="frame" class="overlay-frame" src="your-frame.png" alt="Frame Overlay">
+
+    <!-- 拍照按鈕 -->
+    <button class="snap-btn" onclick="takePhoto()">📷 拍照</button>
+  </div>
+
+  <!-- 隱藏的 Canvas 用於合成與下載圖片 -->
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <script>
+    const video = document.getElementById('webcam');
+    const frame = document.getElementById('frame');
+    const canvas = document.getElementById('canvas');
+
+    // 啟動手機相機 (優先使用後置鏡頭 'environment')
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" } },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        // 如果抓不到後置鏡頭（例如電腦試用），退回普通相機
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = fallbackStream;
+      }
+    }
+
+    // 合成相機畫面與 PNG 並下載
+    function takePhoto() {
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // 1. 畫入相機畫面
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // 2. 畫入 PNG 透明框
+      context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+
+      // 下載圖片
+      const image = canvas.toDataURL("image/png");
+      const a = document.createElement('a');
+      a.href = image;
+      a.download = 'photo.png';
+      a.click();
+    }
+
+    window.addEventListener('load', initCamera);
+  </script>
+</body>
+</html>
