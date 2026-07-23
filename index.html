@@ -6,9 +6,8 @@
   <title>AR 相機框</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
-    /* 容器：讓相機與相框疊在一起 */
     .camera-container {
       position: relative;
       width: 100vw;
@@ -18,116 +17,206 @@
       align-items: center;
     }
 
-    /* 實時相機畫面 */
+    /* 相機畫面全螢幕滿版 */
     video {
       position: absolute;
       width: 100%;
       height: 100%;
-      object-fit: cover; /* 鋪滿螢幕 */
+      object-fit: cover;
       z-index: 1;
     }
 
-    /* 你的透明 PNG 外框 */
+    /* PNG 外框疊加 */
     .overlay-frame {
       position: absolute;
       width: 100%;
       height: 100%;
-      object-fit: contain; /* 確保相框完整顯示不變形 */
+      object-fit: contain;
       z-index: 2;
-      pointer-events: none; /* 讓點擊穿透到下面 */
+      pointer-events: none;
     }
 
-    /* 拍照按鈕 */
+    /* 快門按鈕 */
     .snap-btn {
       position: absolute;
-      bottom: 30px;
+      bottom: 40px;
       z-index: 3;
-      padding: 15px 30px;
+      padding: 16px 36px;
       font-size: 18px;
       font-weight: bold;
       background-color: #ffffff;
       color: #000000;
       border: none;
       border-radius: 50px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
       cursor: pointer;
     }
+    .snap-btn:active { transform: scale(0.95); }
+
+    /* 全螢幕預覽彈窗 */
+    #preview-container {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #preview-img {
+      max-width: 90%;
+      max-height: 70vh;
+      border-radius: 12px;
+      box-shadow: 0 5px 25px rgba(0,0,0,0.8);
+      object-fit: contain;
+      -webkit-touch-callout: default; /* 讓 iOS Chrome 可以長按圖片 */
+    }
+
+    .tip-text {
+      color: #ccc;
+      font-size: 13px;
+      margin-top: 12px;
+      text-align: center;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .action-btn {
+      padding: 12px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 30px;
+      border: none;
+      cursor: pointer;
+    }
+
+    .save-btn { background-color: #007aff; color: #fff; }
+    .retake-btn { background-color: #333; color: #fff; }
   </style>
 </head>
 <body>
 
   <div class="camera-container">
-    <!-- 相機影像 -->
     <video id="webcam" autoplay playsinline muted></video>
-    
-    <!-- 你的預設透明 PNG 圖案 (請換成你的 PNG 網址或相對路徑) -->
     <img id="frame" class="overlay-frame" src="your-frame.png" alt="Frame Overlay">
-
-    <!-- 拍照按鈕 -->
     <button class="snap-btn" onclick="takePhoto()">📷 拍照</button>
   </div>
 
-  <!-- 隱藏的 Canvas 用於合成與下載圖片 -->
+  <!-- 照片預覽 modal -->
+  <div id="preview-container">
+    <img id="preview-img" alt="Captured Photo">
+    <p class="tip-text">💡 點「儲存照片」選單或直接<b>長按照片</b>存入相簿</p>
+    <div class="btn-group">
+      <button class="action-btn retake-btn" onclick="closePreview()">重新拍攝</button>
+      <button class="action-btn save-btn" onclick="savePhoto()">儲存 / 分享照片</button>
+    </div>
+  </div>
+
   <canvas id="canvas" style="display:none;"></canvas>
 
   <script>
-  const video = document.getElementById('webcam');
-  const frame = document.getElementById('frame');
-  const canvas = document.getElementById('canvas');
+    const video = document.getElementById('webcam');
+    const frame = document.getElementById('frame');
+    const canvas = document.getElementById('canvas');
+    const previewContainer = document.getElementById('preview-container');
+    const previewImg = document.getElementById('preview-img');
+    let currentBlob = null;
 
-  // 升級版相機啟動邏輯 (相容更多手機與瀏覽器)
-  async function initCamera() {
-    // 嘗試順序：1. 後置鏡頭 -> 2. 普通鏡頭
-    const constraintsList = [
-      { video: { facingMode: { ideal: "environment" } }, audio: false },
-      { video: { facingMode: "user" }, audio: false },
-      { video: true, audio: false }
-    ];
+    // 高相容性啟動相機邏輯
+    async function initCamera() {
+      const constraintsList = [
+        { video: { facingMode: { ideal: "environment" } }, audio: false },
+        { video: { facingMode: "user" }, audio: false },
+        { video: true, audio: false }
+      ];
 
-    for (let constraints of constraintsList) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = stream;
-        return; // 成功啟動就跳出
-      } catch (err) {
-        console.warn("嘗試啟動相機失敗，切換備用設定:", err);
+      for (let constraints of constraintsList) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          return;
+        } catch (err) {
+          console.warn("嘗試相機模式失敗，嘗試下一個模式...", err);
+        }
       }
+      alert("無法啟用相機！請確認已在 Chrome / Safari 權限設定中允許存取相機。");
     }
 
-    alert("無法讀取相機，請檢查瀏覽器相機權限是否已開啟！");
-  }
+    // 拍照與繪製合成
+    function takePhoto() {
+      if (!video.videoWidth) {
+        alert("相機未準備好，請稍後再試！");
+        return;
+      }
 
-  // 拍照與下載功能
-  function takePhoto() {
-    if (!video.videoWidth) {
-      alert("相機影像尚未準備好，請稍等再試！");
-      return;
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // 1. 畫相機動態影像
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // 2. 疊加透明 PNG 框
+      context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+
+      // 產生預覽圖 (Base64 相容性最高)
+      const dataUrl = canvas.toDataURL('image/png');
+      previewImg.src = dataUrl;
+      previewContainer.style.display = 'flex';
+
+      // 轉成 Blob 備用
+      canvas.toBlob((blob) => {
+        currentBlob = blob;
+      }, 'image/png');
     }
 
-    const context = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    function closePreview() {
+      previewContainer.style.display = 'none';
+    }
 
-    // 1. 畫入相機畫面
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    // 2. 畫入 PNG 透明框
-    context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+    // 跨平台相容儲存機制
+    async function savePhoto() {
+      if (!currentBlob) return;
 
-    // 產出圖片並觸發下載
-    try {
-      const image = canvas.toDataURL("image/png");
+      const file = new File([currentBlob], photo_${Date.now()}.png, { type: 'image/png' });
+
+      // 1. 優先使用原生系統分享選單 (iOS Safari 及 Android Chrome 支援)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: '我的相片',
+            text: '相機框照片'
+          });
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return; // 用戶取消分享，不動作
+        }
+      }
+
+      // 2. 備用方案：傳統觸發瀏覽器下載 (Android Chrome / 電腦瀏覽器)
+      fallbackDownload();
+    }
+
+    function fallbackDownload() {
       const a = document.createElement('a');
-      a.href = image;
-      a.download = 'photo_' + Date.now() + '.png';
+      a.href = previewImg.src;
+      a.download = photo_${Date.now()}.png;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } catch (e) {
-      alert("儲存圖片失敗，請嘗試長按畫面儲存圖片。");
     }
-  }
 
-  window.addEventListener('load', initCamera);
-</script>
+    window.addEventListener('load', initCamera);
+  </script>
 </body>
 </html>
